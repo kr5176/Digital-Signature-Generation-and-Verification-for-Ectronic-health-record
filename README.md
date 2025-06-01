@@ -1,5 +1,5 @@
 # work flow
-Generate secure paperless signature for documents
+Generate secure paperless signature for documents using ECC and schnorr signature
 
 
 Flow chart:
@@ -14,3 +14,5 @@ ER diagram:
 
 working schema:
 ![Digitsl sig gen and ver_working](https://github.com/user-attachments/assets/a648cc48-69ec-420c-9756-b9abc6bf18c1)
+
+
