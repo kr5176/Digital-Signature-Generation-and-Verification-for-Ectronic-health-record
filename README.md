@@ -1,5 +1,6 @@
 # work flow
 Generate secure paperless signature for documents using ECC and schnorr signature
+can be used for signing APIs
 
 
 Flow chart:
