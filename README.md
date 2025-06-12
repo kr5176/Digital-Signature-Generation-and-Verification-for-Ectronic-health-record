@@ -9,11 +9,20 @@ can be used for signing APIs
 ![image](https://github.com/user-attachments/assets/203b8dec-6d2a-4e6f-a667-4e45f167bb3b)
 
 
-ER diagram:
+
+
+
+
+**ER diagram**
 ![Screenshot 2025-04-16 114751](https://github.com/user-attachments/assets/3c3206dd-e4ee-4855-b117-5a996218980a)
 
 
-working schema:
+
+
+
+
+
+**working schema**
 ![Digitsl sig gen and ver_working](https://github.com/user-attachments/assets/a648cc48-69ec-420c-9756-b9abc6bf18c1)
 
 
