@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptoEHR Secure Portal</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen font-sans">
+
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl font-extrabold tracking-tight text-indigo-400">SignatureEHR System</h1>
+            <p class="text-gray-400 mt-2 text-sm">Schnorr Cryptographic Verification Engine — client-held signing keys</p>
+        </header>
+
+        <div id="login-screen" class="bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700 max-w-md mx-auto">
+            <h2 id="auth-title" class="text-2xl font-bold mb-6 text-center text-white">System Authentication</h2>
+
+            <div class="flex gap-2 mb-6 p-1 bg-gray-900 rounded-lg">
+                <button id="tab-admin" onclick="setRole('admin')" class="w-1/2 py-2 rounded-md font-medium text-center bg-indigo-600 text-white transition cursor-pointer">Admin</button>
+                <button id="tab-patient" onclick="setRole('patient')" class="w-1/2 py-2 rounded-md font-medium text-center text-gray-400 hover:text-white transition cursor-pointer">Patient</button>
+            </div>
+
+            <form id="login-form" onsubmit="handleAuthSubmit(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">User ID / Username</label>
+                    <input type="text" id="username" required class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Account Password</label>
+                    <input type="password" id="password" required class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500">
+                    <p class="text-[11px] text-gray-500 mt-1">Used to log in. Sent to the server (hashed). This is NOT your signing key.</p>
+                </div>
+                <div id="passphrase-field" class="hidden">
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-amber-400 mb-1">Signing Passphrase (new)</label>
+                    <input type="password" id="signing-passphrase" class="w-full bg-gray-900 border border-amber-700/60 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-amber-500">
+                    <p class="text-[11px] text-amber-500/80 mt-1">Encrypts your private signing key in THIS browser only. Never sent to the server. If you forget it, your key cannot be recovered — only re-registered as a new identity.</p>
+                </div>
+                <button type="submit" id="auth-submit-btn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-lg transition mt-4 shadow-lg cursor-pointer">
+                    Authenticate Session
+                </button>
+            </form>
+
+            <div class="text-center mt-6 text-sm text-gray-400 border-t border-gray-700/60 pt-4">
+                <p id="toggle-text">Don't have an account?</p>
+                <button onclick="toggleAuthMode()" id="toggle-mode-btn" class="text-indigo-400 font-medium hover:underline mt-1 cursor-pointer">Create an account here</button>
+            </div>
+
+            <div class="text-center mt-4 text-sm border-t border-gray-700/60 pt-4">
+                <button onclick="showScreen('import-screen')" class="text-gray-400 hover:text-white hover:underline cursor-pointer">Import an existing signing key →</button>
+            </div>
+        </div>
+
+        <div id="import-screen" class="hidden bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700 max-w-md mx-auto">
+            <button onclick="showScreen('login-screen')" class="mb-6 text-sm text-indigo-400 hover:underline cursor-pointer">← Back to Login</button>
+            <h2 class="text-2xl font-bold mb-2 text-white">Import Signing Key</h2>
+            <p class="text-xs text-gray-400 mb-6">Restores a key exported from another device/browser into THIS browser's local storage. You'll still need your account password to log in normally afterward.</p>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 mb-1">KEY BACKUP FILE (.json)</label>
+                    <input type="file" id="import-file" accept=".json" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-indigo-900 file:text-indigo-300 hover:file:bg-indigo-800 cursor-pointer">
+                </div>
+                <button onclick="handleImportKey()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-lg transition cursor-pointer">Import Into This Browser</button>
+                <p id="import-status" class="text-xs text-center"></p>
+            </div>
+        </div>
+
+        <div id="dashboard-screen" class="hidden bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700 text-center">
+            <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-4">
+                <span id="welcome-text" class="font-medium text-gray-300">Welcome, User</span>
+                <button onclick="logout()" class="text-xs bg-red-900/40 border border-red-700 hover:bg-red-800 text-red-300 px-3 py-1.5 rounded-md transition cursor-pointer">Sign Out</button>
+            </div>
+
+            <div id="key-status-banner" class="mb-6 text-xs px-3 py-2 rounded-lg border"></div>
+
+            <h3 class="text-xl font-bold mb-6">Select Cryptographic Operation</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <button onclick="showScreen('sign-screen')" class="p-6 bg-gray-900 border border-gray-700 rounded-xl hover:border-indigo-500 transition group text-left cursor-pointer">
+                    <div class="text-indigo-400 text-3xl mb-3">✍️</div>
+                    <h4 class="text-lg font-bold group-hover:text-indigo-400 transition">Digitally Sign File</h4>
+                    <p class="text-sm text-gray-400 mt-1">Signs locally in your browser with your own key, then the application co-signs server-side.</p>
+                </button>
+                <button onclick="showScreen('verify-screen')" class="p-6 bg-gray-900 border border-gray-700 rounded-xl hover:border-emerald-500 transition group text-left cursor-pointer">
+                    <div class="text-emerald-400 text-3xl mb-3">🛡️</div>
+                    <h4 class="text-lg font-bold group-hover:text-emerald-400 transition">Verify signed file</h4>
+                    <p class="text-sm text-gray-400 mt-1">Checks both the user's and the application's independent Schnorr signatures.</p>
+                </button>
+            </div>
+
+            <div class="mt-6 pt-6 border-t border-gray-700/60">
+                <button onclick="handleExportKey()" class="text-xs text-gray-400 hover:text-white hover:underline cursor-pointer">⤓ Export my signing key (backup for another device)</button>
+            </div>
+        </div>
+
+        <div id="sign-screen" class="hidden bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700">
+            <button onclick="showScreen('dashboard-screen')" class="mb-6 text-sm text-indigo-400 hover:underline cursor-pointer">← Back to Options</button>
+            <h2 class="text-2xl font-bold mb-6 text-white border-b border-gray-700 pb-2">File Signature Initialization</h2>
+
+            <form id="sign-form" onsubmit="handleSign(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 mb-1">FILE ID</label>
+                    <input type="text" id="sign-file-id" required class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 mb-1">TARGET RECORD FILE</label>
+                    <input type="file" id="sign-file" required class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500 file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-indigo-900 file:text-indigo-300 hover:file:bg-indigo-800 cursor-pointer">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-amber-400 mb-1">SIGNING PASSPHRASE</label>
+                    <input type="password" id="sign-passphrase" required class="w-full bg-gray-900 border border-amber-700/60 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-amber-500">
+                    <p class="text-[11px] text-gray-500 mt-1">Decrypts your local private key in-browser only, to compute the signature. It is never sent anywhere.</p>
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-lg transition cursor-pointer">Sign Locally & Submit</button>
+            </form>
+
+            <div id="sign-result" class="hidden mt-6 bg-gray-900 p-4 rounded-lg border border-indigo-500/30">
+                <h4 class="text-indigo-400 font-bold mb-2 text-sm tracking-wide">DUAL-SIGNATURE RECORD</h4>
+                <p class="text-xs text-gray-400 mb-3">Copy these exact parameters to verify the file signature on the next panel.</p>
+                <div class="space-y-2 text-xs font-mono select-all">
+                    <div><span class="text-gray-500">User R:</span> <p id="out-user-r" class="bg-gray-950 p-1.5 rounded break-all"></p></div>
+                    <div><span class="text-gray-500">User s:</span> <p id="out-user-s" class="bg-gray-950 p-1.5 rounded break-all"></p></div>
+                    <div><span class="text-gray-500">App R:</span> <p id="out-app-r" class="bg-gray-950 p-1.5 rounded break-all"></p></div>
+                    <div><span class="text-gray-500">App s:</span> <p id="out-app-s" class="bg-gray-950 p-1.5 rounded break-all"></p></div>
+                    <div><span class="text-gray-500">User Public Key:</span> <p id="out-upk" class="bg-gray-950 p-1.5 rounded break-all"></p></div>
+                    <div><span class="text-gray-500">Application Public Key:</span> <p id="out-apk" class="bg-gray-950 p-1.5 rounded break-all"></p></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="verify-screen" class="hidden bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700">
+            <button onclick="showScreen('dashboard-screen')" class="mb-6 text-sm text-emerald-400 hover:underline cursor-pointer">← Back to Options</button>
+            <h2 class="text-2xl font-bold mb-6 text-white border-b border-gray-700 pb-2">Cryptographic Audit Ledger</h2>
+
+            <form id="verify-form" onsubmit="handleVerify(event)" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-400 mb-1">USER ID</label>
+                        <input type="text" id="v-user-id" required class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-1.5 text-white font-mono text-sm focus:border-emerald-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-400 mb-1">FILE ID</label>
+                        <input type="text" id="v-file-id" required class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-1.5 text-white font-mono text-sm focus:border-emerald-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <div class="space-y-3 p-4 bg-gray-900/60 border border-gray-700 rounded-xl">
+                    <span class="text-xs text-emerald-400 font-bold uppercase tracking-wider block">Required Cryptographic Public Values</span>
+                    <div>
+                        <label class="block text-[10px] text-gray-400 mb-0.5">USER PUBLIC KEY</label>
+                        <input type="text" id="v-upk" required class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1 text-xs font-mono text-white focus:border-emerald-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-gray-400 mb-0.5">APPLICATION PUBLIC KEY</label>
+                        <input type="text" id="v-apk" required class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1 text-xs font-mono text-white focus:border-emerald-500 focus:outline-none">
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[10px] text-gray-400 mb-0.5">USER R</label>
+                            <input type="text" id="v-user-r" required class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1 text-xs font-mono text-white focus:border-emerald-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-gray-400 mb-0.5">USER s</label>
+                            <input type="text" id="v-user-s" required class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1 text-xs font-mono text-white focus:border-emerald-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-gray-400 mb-0.5">APP R</label>
+                            <input type="text" id="v-app-r" required class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1 text-xs font-mono text-white focus:border-emerald-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-gray-400 mb-0.5">APP s</label>
+                            <input type="text" id="v-app-s" required class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1 text-xs font-mono text-white focus:border-emerald-500 focus:outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 mb-1">UPLOAD SIGNED TARGET FILE</label>
+                    <input type="file" id="v-file" required class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-emerald-900 file:text-emerald-300 hover:file:bg-emerald-800 cursor-pointer">
+                </div>
+
+                <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 rounded-lg transition cursor-pointer">Validate Cryptographic Integrity</button>
+            </form>
+
+            <div id="verify-result" class="hidden mt-6 p-4 rounded-lg text-center font-bold text-lg border"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as cc from "/static/crypto-core.js";
+        import * as vault from "/static/key-vault.js";
+
+        const API_URL = "";
+        let currentRole = "admin";
+        let authMode = "login"; // 'login' or 'register'
+        let currentUsername = null;
+
+        window.showScreen = function (screenId) {
+            ['login-screen', 'import-screen', 'dashboard-screen', 'sign-screen', 'verify-screen'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+            document.getElementById(screenId).classList.remove('hidden');
+        };
+
+        window.setRole = function (role) {
+            currentRole = role;
+            const adminBtn = document.getElementById('tab-admin');
+            const patientBtn = document.getElementById('tab-patient');
+            if (role === 'admin') {
+                adminBtn.className = "w-1/2 py-2 rounded-md font-medium text-center bg-indigo-600 text-white transition cursor-pointer";
+                patientBtn.className = "w-1/2 py-2 rounded-md font-medium text-center text-gray-400 hover:text-white transition cursor-pointer";
+            } else {
+                patientBtn.className = "w-1/2 py-2 rounded-md font-medium text-center bg-indigo-600 text-white transition cursor-pointer";
+                adminBtn.className = "w-1/2 py-2 rounded-md font-medium text-center text-gray-400 hover:text-white transition cursor-pointer";
+            }
+        };
+
+        window.toggleAuthMode = function () {
+            const title = document.getElementById('auth-title');
+            const submitBtn = document.getElementById('auth-submit-btn');
+            const toggleText = document.getElementById('toggle-text');
+            const toggleBtn = document.getElementById('toggle-mode-btn');
+            const passphraseField = document.getElementById('passphrase-field');
+            const passphraseInput = document.getElementById('signing-passphrase');
+
+            if (authMode === "login") {
+                authMode = "register";
+                title.innerText = "Create Secure Account";
+                submitBtn.innerText = "Register New Account";
+                toggleText.innerText = "Already have an account?";
+                toggleBtn.innerText = "Log in here";
+                passphraseField.classList.remove('hidden');
+                passphraseInput.required = true;
+            } else {
+                authMode = "login";
+                title.innerText = "System Authentication";
+                submitBtn.innerText = "Authenticate Session";
+                toggleText.innerText = "Don't have an account?";
+                toggleBtn.innerText = "Create an account here";
+                passphraseField.classList.add('hidden');
+                passphraseInput.required = false;
+            }
+        };
+
+        function updateKeyStatusBanner() {
+            const banner = document.getElementById('key-status-banner');
+            if (vault.hasLocalKey(currentUsername)) {
+                banner.className = "mb-6 text-xs px-3 py-2 rounded-lg border bg-emerald-950/40 border-emerald-700 text-emerald-300";
+                banner.innerText = "✓ Signing key present in this browser.";
+            } else {
+                banner.className = "mb-6 text-xs px-3 py-2 rounded-lg border bg-amber-950/40 border-amber-700 text-amber-300";
+                banner.innerText = "⚠ No local signing key found for this account in this browser. Import a key backup to sign files (verifying still works).";
+            }
+        }
+
+        window.handleAuthSubmit = async function (e) {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const endpoint = authMode === "login" ? "/login" : "/register";
+
+            try {
+                let body;
+                if (authMode === "register") {
+                    const passphrase = document.getElementById('signing-passphrase').value;
+                    if (!passphrase || passphrase.length < 8) {
+                        alert("Signing passphrase must be at least 8 characters.");
+                        return;
+                    }
+                    // Real EC keypair generated entirely client-side.
+                    const { priv, pub } = cc.generateKeypair();
+                    const userPubHex = cc.pointToHex(pub);
+                    const blob = await vault.encryptPrivateKey(priv, passphrase);
+
+                    body = JSON.stringify({ username, password, role: currentRole, user_public_key: userPubHex });
+
+                    const response = await fetch(`${API_URL}/register`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include', body
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        vault.saveKeyBlob(username, blob);
+                        alert("Account created! Your signing key was generated in this browser and never left it. A backup download will start now — keep it and your signing passphrase safe; neither can be recovered by the server.");
+                        vault.exportKeyFile(username, blob);
+                        toggleAuthMode();
+                        document.getElementById('password').value = "";
+                        document.getElementById('signing-passphrase').value = "";
+                    } else {
+                        alert(data.error || "Registration failed.");
+                    }
+                } else {
+                    body = JSON.stringify({ username, password, role: currentRole });
+                    const response = await fetch(`${API_URL}/login`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include', body
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        currentUsername = data.username;
+                        document.getElementById('welcome-text').innerText = `Session: ${data.username} (${data.role.toUpperCase()})`;
+                        updateKeyStatusBanner();
+                        showScreen('dashboard-screen');
+                    } else {
+                        alert(data.error || "Authentication Mismatch");
+                    }
+                }
+            } catch (err) {
+                alert("Cannot connect to backend server, or local cryptography failed: " + err.message);
+            }
+        };
+
+        window.logout = async function () {
+            try {
+                await fetch(`${API_URL}/logout`, { method: 'POST', credentials: 'include' });
+            } catch (err) { /* ignore network errors, still clear local UI state */ }
+            currentUsername = null;
+            document.getElementById('login-form').reset();
+            authMode = "login";
+            document.getElementById('auth-title').innerText = "System Authentication";
+            document.getElementById('auth-submit-btn').innerText = "Authenticate Session";
+            document.getElementById('toggle-text').innerText = "Don't have an account?";
+            document.getElementById('toggle-mode-btn').innerText = "Create an account here";
+            document.getElementById('passphrase-field').classList.add('hidden');
+            showScreen('login-screen');
+        };
+
+        window.handleImportKey = async function () {
+            const status = document.getElementById('import-status');
+            const fileInput = document.getElementById('import-file');
+            if (!fileInput.files[0]) {
+                status.className = "text-xs text-center text-red-400";
+                status.innerText = "Choose a key backup file first.";
+                return;
+            }
+            try {
+                const text = await fileInput.files[0].text();
+                const { username, blob } = vault.importKeyFile(text);
+                vault.saveKeyBlob(username, blob);
+                status.className = "text-xs text-center text-emerald-400";
+                status.innerText = `Key for "${username}" imported into this browser. You can now log in normally.`;
+            } catch (err) {
+                status.className = "text-xs text-center text-red-400";
+                status.innerText = "Import failed: " + err.message;
+            }
+        };
+
+        window.handleExportKey = function () {
+            const blob = vault.loadKeyBlob(currentUsername);
+            if (!blob) {
+                alert("No local key found for this account in this browser.");
+                return;
+            }
+            vault.exportKeyFile(currentUsername, blob);
+        };
+
+        async function fetchAppPublicKey() {
+            const res = await fetch(`${API_URL}/app_public_key`, { credentials: 'include' });
+            if (!res.ok) throw new Error("Could not fetch application public key.");
+            return res.json();
+        }
+
+        window.handleSign = async function (e) {
+            e.preventDefault();
+            const fileId = document.getElementById('sign-file-id').value;
+            const fileInput = document.getElementById('sign-file');
+            const passphrase = document.getElementById('sign-passphrase').value;
+            const file = fileInput.files[0];
+
+            const blob = vault.loadKeyBlob(currentUsername);
+            if (!blob) {
+                alert("No local signing key found for this account in this browser. Import your key backup first.");
+                return;
+            }
+
+            try {
+                const priv = await vault.decryptPrivateKey(blob, passphrase);
+                const userPubHex = cc.pointToHex(cc.G.multiply(priv));
+
+                const fileBytes = new Uint8Array(await file.arrayBuffer());
+                const fileHashHex = await cc.sha256Hex(fileBytes);
+
+                const { app_public_key } = await fetchAppPublicKey();
+
+                const userSig = await cc.signFileAsUser(priv, userPubHex, app_public_key, currentUsername, fileId, fileHashHex);
+
+                const formData = new FormData();
+                formData.append('file_id', fileId);
+                formData.append('file_hash_hex', fileHashHex);
+                formData.append('user_r', userSig.R);
+                formData.append('user_s', userSig.s);
+                formData.append('file', file);
+
+                const response = await fetch(`${API_URL}/sign`, { method: 'POST', credentials: 'include', body: formData });
+                const data = await response.json();
+                if (response.ok) {
+                    document.getElementById('sign-result').classList.remove('hidden');
+                    document.getElementById('out-user-r').innerText = data.user_r;
+                    document.getElementById('out-user-s').innerText = data.user_s;
+                    document.getElementById('out-app-r').innerText = data.app_r;
+                    document.getElementById('out-app-s').innerText = data.app_s;
+                    document.getElementById('out-upk').innerText = data.user_public_key;
+                    document.getElementById('out-apk').innerText = data.app_public_key;
+                } else {
+                    alert(data.error);
+                }
+            } catch (err) {
+                if (err.name === "OperationError") {
+                    alert("Incorrect signing passphrase (or corrupted local key).");
+                } else {
+                    alert("Error while signing: " + err.message);
+                }
+            }
+        };
+
+        window.handleVerify = async function (e) {
+            e.preventDefault();
+            const formData = new FormData();
+            formData.append('user_id', document.getElementById('v-user-id').value);
+            formData.append('file_id', document.getElementById('v-file-id').value);
+            formData.append('user_public_key', document.getElementById('v-upk').value);
+            formData.append('app_public_key', document.getElementById('v-apk').value);
+            formData.append('user_r', document.getElementById('v-user-r').value);
+            formData.append('user_s', document.getElementById('v-user-s').value);
+            formData.append('app_r', document.getElementById('v-app-r').value);
+            formData.append('app_s', document.getElementById('v-app-s').value);
+            formData.append('file', document.getElementById('v-file').files[0]);
+
+            try {
+                const response = await fetch(`${API_URL}/verify`, { method: 'POST', credentials: 'include', body: formData });
+                const data = await response.json();
+                const targetDiv = document.getElementById('verify-result');
+                targetDiv.classList.remove('hidden');
+
+                if (data.valid === true) {
+                    targetDiv.className = "mt-6 p-4 rounded-lg text-center font-bold text-lg bg-emerald-950/50 border border-emerald-500 text-emerald-400";
+                    targetDiv.innerText = "✓ Valid Signature Verified Successfully.";
+                } else {
+                    targetDiv.className = "mt-6 p-4 rounded-lg text-center font-bold text-lg bg-red-950/50 border border-red-500 text-red-400";
+                    targetDiv.innerText = "✕ Invalid Signature! Threat Detected or Verification Mismatch.";
+                }
+            } catch (err) {
+                alert("Error posting verification payload: " + err.message);
+            }
+        };
+    </script>
+</body>
+</html>
