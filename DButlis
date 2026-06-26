@@ -1,0 +1,182 @@
+import os
+import mysql.connector
+from mysql.connector import pooling, Error
+from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
+
+# Loaded here (not just in app.py) so that ANY script importing this module -
+# test.py, a one-off shell, etc. - picks up .env automatically too, instead
+# of only working when run through app.py.
+load_dotenv()
+
+REQUIRED_ENV = ["DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME"]
+_missing = [v for v in REQUIRED_ENV if not os.getenv(v)]
+if _missing:
+    raise RuntimeError(
+        f"Missing required database environment variables: {', '.join(_missing)}. "
+        "Set them (see .env.example) before starting the app."
+    )
+
+try:
+    db_pool = mysql.connector.pooling.MySQLConnectionPool(
+        pool_name="ehr_pool",
+        pool_size=5,
+        host=os.getenv("DB_HOST"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        database=os.getenv("DB_NAME"),
+        port=int(os.getenv("DB_PORT", 3306)),
+    )
+except Error as e:
+    print(f"Error while initializing MySQL Connection Pool: {e}")
+    db_pool = None
+
+
+def get_connection():
+    if db_pool:
+        return db_pool.get_connection()
+    raise RuntimeError("Database connection pool is uninitialized.")
+
+
+# ----------------------------------------------------------------------------
+# Users
+# ----------------------------------------------------------------------------
+
+def create_user(user_id, password, role, user_public_key, user_private_key_enc):
+    """
+    Passwords are hashed (werkzeug, salted) before storage. Also stores the
+    user's real persistent EC keypair (public key in the clear, private key
+    Fernet-encrypted) generated once at registration.
+    """
+    query = """
+        INSERT INTO users (user_id, password_hash, role, user_public_key, user_private_key_enc)
+        VALUES (%s, %s, %s, %s, %s)
+    """
+    password_hash = generate_password_hash(password)
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query, (user_id, password_hash, role, user_public_key, user_private_key_enc))
+                conn.commit()
+                return True
+    except Error as e:
+        print(f"Database Error inside create_user: {e}")
+        return False
+
+
+def check_user_login(user_id, password, role):
+    query = "SELECT password_hash FROM users WHERE user_id = %s AND role = %s"
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query, (user_id, role))
+                result = cursor.fetchone()
+                if result is None:
+                    return False
+                return check_password_hash(result[0], password)
+    except Error as e:
+        print(f"Database Error inside check_user_login: {e}")
+        return False
+
+
+def get_user_keys(user_id):
+    """Returns {"user_public_key": ..., "user_private_key_enc": ...} or None if not found."""
+    query = "SELECT user_public_key, user_private_key_enc FROM users WHERE user_id = %s"
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query, (user_id,))
+                result = cursor.fetchone()
+                if result and result[0] and result[1]:
+                    return {"user_public_key": result[0], "user_private_key_enc": result[1]}
+    except Error as e:
+        print(f"Database Error inside get_user_keys: {e}")
+        return None
+    return None
+
+
+# ----------------------------------------------------------------------------
+# Applications (system signing key)
+# ----------------------------------------------------------------------------
+
+def get_app_public_key(app_id):
+    query = "SELECT app_public_key FROM applications WHERE app_id = %s"
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query, (app_id,))
+                result = cursor.fetchone()
+                return result[0] if result else None
+    except Error as e:
+        print(f"Database Error inside get_app_public_key: {e}")
+        return None
+
+
+def upsert_application(app_id, app_public_key):
+    query = """
+        INSERT INTO applications (app_id, app_public_key) VALUES (%s, %s)
+        ON DUPLICATE KEY UPDATE app_public_key = VALUES(app_public_key)
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query, (app_id, app_public_key))
+                conn.commit()
+                return True
+    except Error as e:
+        print(f"Database Error inside upsert_application: {e}")
+        return False
+
+
+# ----------------------------------------------------------------------------
+# Files
+# ----------------------------------------------------------------------------
+
+def save_signed_file(file_id, file_name, file_content_hash, user_public_key,
+                      app_id, app_public_key, r_value, r_blinded, final_hash, uploaded_by):
+    query = """
+        INSERT INTO files (file_id, file_name, file_content_hash, user_public_key,
+                            app_id, app_public_key, r_value, r_blinded, final_hash, uploaded_by)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query, (file_id, file_name, file_content_hash, user_public_key,
+                                        app_id, app_public_key, r_value, r_blinded, final_hash, uploaded_by))
+                conn.commit()
+    except mysql.connector.IntegrityError as e:
+        raise ValueError(f"file_id '{file_id}' already exists.") from e
+    except Error as e:
+        print(f"Database Error inside save_signed_file: {e}")
+        raise
+
+
+def get_file_record(user_id, file_id):
+    query = """
+        SELECT file_name, file_content_hash, user_public_key, app_id,
+               app_public_key, r_value, r_blinded, final_hash
+        FROM files
+        WHERE uploaded_by = %s AND file_id = %s
+        LIMIT 1
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query, (user_id, file_id))
+                result = cursor.fetchone()
+                if result:
+                    return {
+                        "file_name": result[0],
+                        "file_content_hash": result[1],
+                        "user_public_key": result[2],
+                        "app_id": result[3],
+                        "app_public_key": result[4],
+                        "r_value": result[5],
+                        "r_blinded": result[6],
+                        "final_hash": result[7],
+                    }
+    except Error as e:
+        print(f"Database Error inside get_file_record: {e}")
+        return None
+    return None
