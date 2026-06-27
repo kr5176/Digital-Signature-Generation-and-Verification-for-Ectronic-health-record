@@ -1,34 +1,47 @@
-CREATE TABLE signature_verification (
-    verification_id INT AUTO_INCREMENT PRIMARY KEY,
-    signature_gen_id INT NOT NULL, -- Links to the signature being verified
-    verified_by_user_id INT NOT NULL, -- User who performed verification
-    
-    -- Verification intermediate values (recalculated during verification)
-    verify_first_intermediate_value int NOT NULL,
-    verify_second_intermediate_value int NOT NULL,
-    verify_third_intermediate_value int NOT NULL,
-    verify_fourth_intermediate_value int NOT NULL,
-    
-    -- Verification hash and comparison values
-    verify_z_value int NOT NULL,
-    verify_h1_value int NOT NULL,
-   
-    
-    -- Verification results
-    verification_result ENUM('valid', 'invalid', 'error') NOT NULL,
-    confidence_score DECIMAL(5,4) DEFAULT 1.0000, -- 0.0000 to 1.0000
-    
+SET FOREIGN_KEY_CHECKS = 0;
 
-    -- Error handling
-    error_code VARCHAR(20) NULL,
-    error_description TEXT NULL,
-    
-    -- Foreign keys
-    FOREIGN KEY (signature_gen_id) REFERENCES signature_generation(signature_gen_id) ON DELETE CASCADE,
-    FOREIGN KEY (verified_by_user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    
-    -- Indexes
-    INDEX idx_signature_gen_id (signature_gen_id),
-    INDEX idx_verified_by (verified_by_user_id),
-    INDEX idx_verification_result (verification_result)
-);
+DROP DATABASE IF EXISTS signatureehr;
+CREATE DATABASE signatureehr CHARACTER SET utf8mb4;
+USE signatureehr;
+
+CREATE TABLE users (
+    user_id              VARCHAR(50)  NOT NULL,
+    password_hash        VARCHAR(255) NOT NULL,
+    role                 VARCHAR(20)  NOT NULL,
+    user_public_key      VARCHAR(66)  NULL,   -- compressed secp256k1 point, hex
+    user_private_key_enc TEXT         NULL,   -- Fernet-encrypted private scalar
+    created_at           TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id),
+    CONSTRAINT chk_role CHECK (role IN ('admin', 'patient'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE applications (
+    app_id          VARCHAR(50) NOT NULL,
+    app_public_key  VARCHAR(66) NOT NULL,
+    PRIMARY KEY (app_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE files (
+    file_id            VARCHAR(50)  NOT NULL,
+    file_name          VARCHAR(255) NOT NULL,
+    file_content_hash  VARCHAR(64)  NOT NULL,  -- sha256 of the actual file bytes
+    user_public_key    VARCHAR(66)  NOT NULL,  -- signer's public key at time of signing
+    app_id             VARCHAR(50)  NOT NULL,
+    app_public_key     VARCHAR(66)  NOT NULL,  -- app's public key at time of signing
+    r_value            VARCHAR(66)  NOT NULL,  -- Schnorr nonce commitment R, compressed point hex
+    r_blinded          VARCHAR(66)  NOT NULL,  -- tamper-binding blinded R, compressed point hex
+    final_hash         VARCHAR(64)  NOT NULL,  -- the actual "signature" check value
+    uploaded_by        VARCHAR(50)  NULL,
+    signed_at          TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (file_id),
+    CONSTRAINT fk_files_uploaded_by
+        FOREIGN KEY (uploaded_by) REFERENCES users (user_id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE,
+    CONSTRAINT fk_files_app
+        FOREIGN KEY (app_id) REFERENCES applications (app_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+SHOW TABLES;
