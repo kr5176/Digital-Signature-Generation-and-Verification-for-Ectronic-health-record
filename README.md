@@ -1,8 +1,8 @@
 Send a Mail to get full access along with demo and readme file.
 
-Requirements:
-Flask==3.0.3\\
-flask-cors==4.0.1//
+Requirements:  \
+Flask==3.0.3  \
+flask-cors==4.0.1  \
 mysql-connector-python==8.4.0
 ecdsa==0.19.0
 cryptography==42.0.8
