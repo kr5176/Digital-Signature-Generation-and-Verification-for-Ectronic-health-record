@@ -8,8 +8,8 @@ CREATE TABLE users (
     user_id              VARCHAR(50)  NOT NULL,
     password_hash        VARCHAR(255) NOT NULL,
     role                 VARCHAR(20)  NOT NULL,
-    user_public_key      VARCHAR(66)  NULL,   -- compressed secp256k1 point, hex
-    user_private_key_enc TEXT         NULL,   -- Fernet-encrypted private scalar
+    user_public_key      VARCHAR(66)  NULL,   
+    user_private_key_enc TEXT         NULL,   
     created_at           TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id),
     CONSTRAINT chk_role CHECK (role IN ('admin', 'patient'))
@@ -24,13 +24,13 @@ CREATE TABLE applications (
 CREATE TABLE files (
     file_id            VARCHAR(50)  NOT NULL,
     file_name          VARCHAR(255) NOT NULL,
-    file_content_hash  VARCHAR(64)  NOT NULL,  -- sha256 of the actual file bytes
-    user_public_key    VARCHAR(66)  NOT NULL,  -- signer's public key at time of signing
+    file_content_hash  VARCHAR(64)  NOT NULL,  
+    user_public_key    VARCHAR(66)  NOT NULL,  
     app_id             VARCHAR(50)  NOT NULL,
-    app_public_key     VARCHAR(66)  NOT NULL,  -- app's public key at time of signing
-    r_value            VARCHAR(66)  NOT NULL,  -- Schnorr nonce commitment R, compressed point hex
-    r_blinded          VARCHAR(66)  NOT NULL,  -- tamper-binding blinded R, compressed point hex
-    final_hash         VARCHAR(64)  NOT NULL,  -- the actual "signature" check value
+    app_public_key     VARCHAR(66)  NOT NULL,  
+    r_value            VARCHAR(66)  NOT NULL,  
+    r_blinded          VARCHAR(66)  NOT NULL,  
+    final_hash         VARCHAR(64)  NOT NULL,  
     uploaded_by        VARCHAR(50)  NULL,
     signed_at          TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (file_id),
